@@ -1899,6 +1899,109 @@ static bool single_line_comment_indent_rule_applies(chunk_t *start)
    return(false);
 }
 
+/**
+ * returns true if backward scan reveals only comments or code
+ * false if previous thing hits brace or 2 newlines in a row
+ */
+static bool trail_single_line_comment_indent_rule_applies(chunk_t *start)
+{
+   LOG_FUNC_ENTRY();
+   chunk_t *pc      = start;
+   int     nl_count = 0;
+
+   if (!chunk_is_single_line_comment(pc))
+   {
+      return(false);
+   }
+
+   /* scan backward */
+   while ((pc = chunk_get_prev(pc)) != NULL)
+   {
+      if (chunk_is_newline(pc))
+      {
+         if ((nl_count > 0) || (pc->nl_count > 1))
+         {
+            return(false);
+         }
+
+         nl_count++;
+      }
+      else
+      {
+         nl_count = 0;
+         if (!chunk_is_single_line_comment(pc))
+         {
+            /* here we check for things to run into that we wouldn't want to
+             * indent the comment for.  for example, non-single line comment,
+             * brace */
+            if (chunk_is_comment(pc) || 
+                chunk_is_closing_brace(pc) || 
+                chunk_is_opening_brace(pc) ||
+                pc->type == CT_PRIVATE_COLON )
+            {
+               return(false);
+            }
+
+            return(true);
+         }
+      }
+   }
+
+   return(false);
+}
+
+static chunk_t *skip_braced_block_back(chunk_t *pc)
+{
+  int level = 1;
+  while ((pc = chunk_get_prev(pc)) != NULL)
+  {
+    if(chunk_is_opening_brace(pc))
+    {
+      if(--level == 0)
+      {
+        return pc;
+      }
+    }
+    else if(chunk_is_closing_brace(pc)) 
+    {
+      level++;
+    }
+  }
+  return pc;
+}
+
+static bool chunk_is_declaration(c_token_t token)
+{
+  return (token == CT_CLASS) || 
+          (token == CT_STRUCT) ||
+          (token == CT_UNION) ||
+          (token == CT_ENUM) ||
+          (token == CT_ENUM_CLASS);
+}
+
+static bool is_inside_declaration(chunk_t *pc)
+{
+  while ((pc = chunk_get_prev(pc)) != NULL) 
+  {
+    if(chunk_is_opening_brace(pc)) 
+    {
+      if(chunk_is_declaration(pc->parent_type)) 
+      {
+        return true;
+      }
+      if((pc->parent_type == CT_FUNC_DEF) ||
+         (pc->parent_type == CT_FUNC_CLASS_DEF))
+      {
+        return false;
+      }
+    }
+    else if(chunk_is_closing_brace(pc)) 
+    {
+      pc = skip_braced_block_back(pc);
+    } 
+  }
+  return false;
+}
 
 /**
  * REVISIT: This needs to be re-checked, maybe cleaned up
@@ -1982,6 +2085,21 @@ static void indent_comment(chunk_t *pc, int col)
       LOG_FMT(LCMTIND, "rule 4 - single line comment indent, now in %d\n", pc->column);
       return;
    }
+
+   /* check if special trailing single line comment rule applies */
+   if ((cpd.settings[UO_indent_trail_sing_line_comments].n > 0) &&
+       trail_single_line_comment_indent_rule_applies(pc) &&
+       ! single_line_comment_indent_rule_applies(pc))
+   {
+      bool in = is_inside_declaration(pc);
+      if(in) {
+        reindent_line(pc, col + cpd.settings[UO_indent_trail_sing_line_comments].n);
+        LOG_FMT(LCMTIND, "rule 6 - trailing single line comment indent, now in %d\n", pc->column);
+        return;
+      }
+   }
+
+
    LOG_FMT(LCMTIND, "rule 5 - fall-through, stay in %d\n", col);
 
    reindent_line(pc, col);

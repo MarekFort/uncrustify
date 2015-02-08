@@ -638,6 +638,8 @@ void register_options(void)
                   "Usually set to 0, 1, or indent_columns.");
    unc_add_option("indent_sing_line_comments", UO_indent_sing_line_comments, AT_NUM,
                   "Spaces to indent single line ('//') comments on lines before code");
+   unc_add_option("indent_trail_sing_line_comments", UO_indent_trail_sing_line_comments, AT_NUM,
+                  "Spaces to indent single line ('//') comments on lines after code");
    unc_add_option("indent_relative_single_line_comments", UO_indent_relative_single_line_comments, AT_BOOL,
                   "If set, will indent trailing single line ('//') comments relative\n"
                   "to the code instead of trying to keep the same absolute column");
